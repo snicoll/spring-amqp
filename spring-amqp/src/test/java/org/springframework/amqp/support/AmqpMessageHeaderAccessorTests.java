@@ -19,7 +19,9 @@ package org.springframework.amqp.support;
 import java.util.Date;
 import java.util.Map;
 
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 
 import org.springframework.amqp.core.MessageDeliveryMode;
 import org.springframework.amqp.core.MessageProperties;
@@ -33,6 +35,9 @@ import static org.junit.Assert.*;
  * @author Stephane Nicoll
  */
 public class AmqpMessageHeaderAccessorTests {
+
+	@Rule
+	public final ExpectedException thrown = ExpectedException.none();
 
 	@Test
 	public void validateAmqpHeaders() throws Exception {
@@ -89,6 +94,22 @@ public class AmqpMessageHeaderAccessorTests {
 
 		// Making sure replyChannel is not mixed with replyTo
 		assertNull(headerAccessor.getReplyChannel());
+	}
+
+	@Test
+	public void prioritySet() {
+		Message<?> message = MessageBuilder.withPayload("payload").
+				setHeader(AmqpMessageHeaderAccessor.PRIORITY, 90).build();
+		AmqpMessageHeaderAccessor accessor = new AmqpMessageHeaderAccessor(message);
+		assertEquals(Integer.valueOf(90), accessor.getPriority());
+	}
+
+	@Test
+	public void priorityMustBeInteger() {
+		AmqpMessageHeaderAccessor accessor = new AmqpMessageHeaderAccessor(MessageBuilder.withPayload("foo").build());
+		thrown.expect(IllegalArgumentException.class);
+		thrown.expectMessage("priority");
+		accessor.setHeader(AmqpMessageHeaderAccessor.PRIORITY, "Foo");
 	}
 
 }

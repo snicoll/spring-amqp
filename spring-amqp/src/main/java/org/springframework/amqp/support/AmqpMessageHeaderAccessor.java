@@ -23,6 +23,7 @@ import java.util.Map;
 import org.springframework.amqp.core.MessageDeliveryMode;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.support.NativeMessageHeaderAccessor;
+import org.springframework.util.Assert;
 import org.springframework.util.MimeType;
 
 /**
@@ -33,6 +34,8 @@ import org.springframework.util.MimeType;
  * @since 2.0
  */
 public class AmqpMessageHeaderAccessor extends NativeMessageHeaderAccessor {
+
+	public static final String PRIORITY = "priority";
 
 	protected AmqpMessageHeaderAccessor(Map<String, List<String>> nativeHeaders) {
 		super(nativeHeaders);
@@ -49,6 +52,15 @@ public class AmqpMessageHeaderAccessor extends NativeMessageHeaderAccessor {
 	 */
 	public static AmqpMessageHeaderAccessor wrap(Message<?> message) {
 		return new AmqpMessageHeaderAccessor(message);
+	}
+
+	@Override
+	protected void verifyType(String headerName, Object headerValue) {
+		super.verifyType(headerName, headerValue);
+		if (PRIORITY.equals(headerName)) {
+			Assert.isTrue(Integer.class.isAssignableFrom(headerValue.getClass()), "The '" + headerName
+					+ "' header value must be an Integer.");
+		}
 	}
 
 	public String getAppId() {
@@ -100,6 +112,10 @@ public class AmqpMessageHeaderAccessor extends NativeMessageHeaderAccessor {
 
 	public String getMessageId() {
 		return (String) getHeader(AmqpHeaders.MESSAGE_ID);
+	}
+
+	public Integer getPriority() {
+		return (Integer) getHeader(PRIORITY);
 	}
 
 	public String getReceivedExchange() {

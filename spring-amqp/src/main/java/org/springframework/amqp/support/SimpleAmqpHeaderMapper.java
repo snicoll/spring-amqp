@@ -24,7 +24,6 @@ import java.util.Map;
 
 import org.springframework.amqp.core.MessageDeliveryMode;
 import org.springframework.amqp.core.MessageProperties;
-import org.springframework.messaging.MessageHeaders;
 import org.springframework.messaging.support.AbstractHeaderMapper;
 import org.springframework.util.StringUtils;
 
@@ -32,11 +31,11 @@ import org.springframework.util.StringUtils;
  * Simple implementation of {@link AmqpHeaderMapper}.
  * <p>
  * By default this implementation will only copy AMQP properties (e.g. contentType)
- * to and from {@link MessageHeaders}. Any user-defined headers within the AMQP
- * {@link MessageProperties} will NOT be copied to or from an AMQP Message unless
- * explicitly identified via {@link #setRequestHeaderNames} and/or
- * {@link #setReplyHeaderNames}. If you need to copy all user-defined headers
- * simply use wild-card character '*'.
+ * to and from {@link org.springframework.messaging.MessageHeaders MessageHeaders}.
+ * Any user-defined headers within the AMQP {@link MessageProperties} will NOT be
+ * copied to or from an AMQP Message unless explicitly identified via
+ * {@link #setRequestHeaderNames} and/or {@link #setReplyHeaderNames}. If you need
+ * to copy all user-defined headers simply use wild-card character '*'.
  * <p>
  * Constants for the AMQP header keys are defined in {@link AmqpHeaders}.
  *
@@ -126,7 +125,7 @@ public class SimpleAmqpHeaderMapper extends AbstractHeaderMapper<MessageProperti
 			}
 			Integer priority = amqpMessageProperties.getPriority();
 			if (priority != null && priority > 0) {
-				headers.put(MessageHeaders.PRIORITY, priority);
+				headers.put(AmqpMessageHeaderAccessor.PRIORITY, priority);
 			}
 			String receivedExchange = amqpMessageProperties.getReceivedExchange();
 			if (StringUtils.hasText(receivedExchange)) {
@@ -224,7 +223,7 @@ public class SimpleAmqpHeaderMapper extends AbstractHeaderMapper<MessageProperti
 		if (StringUtils.hasText(messageId)) {
 			amqpMessageProperties.setMessageId(messageId);
 		}
-		Integer priority = getHeaderIfAvailable(headers, MessageHeaders.PRIORITY, Integer.class);
+		Integer priority = getHeaderIfAvailable(headers, AmqpMessageHeaderAccessor.PRIORITY, Integer.class);
 		if (priority != null) {
 			amqpMessageProperties.setPriority(priority);
 		}
