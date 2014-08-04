@@ -23,7 +23,6 @@ import org.junit.Test;
 import org.junit.rules.ExpectedException;
 
 import org.springframework.amqp.core.MessageListener;
-import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.rabbit.config.RabbitListenerContainerTestFactory;
 import org.springframework.amqp.rabbit.config.RabbitListenerEndpointRegistrar;
 import org.springframework.amqp.rabbit.config.RabbitListenerEndpointRegistry;
@@ -72,14 +71,6 @@ public class EnableRabbitTests extends AbstractRabbitAnnotationDrivenTests {
 		thrown.expect(BeanCreationException.class);
 		thrown.expectMessage("'rabbitAdmin'");
 		new AnnotationConfigApplicationContext(EnableRabbitSampleConfig.class, FullBean.class);
-	}
-
-	@Override
-	@Test
-	public void queueReferencesConfiguration() {
-		ConfigurableApplicationContext context = new AnnotationConfigApplicationContext(
-				EnableRabbitQueueReferencesConfig.class, QueueReferencesBean.class);
-		testQueueReferencesConfiguration(context);
 	}
 
 	@Override
@@ -152,26 +143,6 @@ public class EnableRabbitTests extends AbstractRabbitAnnotationDrivenTests {
 		@Bean
 		public RabbitAdmin rabbitAdmin() {
 			return mock(RabbitAdmin.class);
-		}
-	}
-
-	@EnableRabbit
-	@Configuration
-	static class EnableRabbitQueueReferencesConfig {
-
-		@Bean
-		public RabbitListenerContainerTestFactory simpleFactory() {
-			return new RabbitListenerContainerTestFactory();
-		}
-
-		@Bean
-		public Queue queue1() {
-			return mock(Queue.class);
-		}
-
-		@Bean
-		public Queue queue2() {
-			return mock(Queue.class);
 		}
 	}
 

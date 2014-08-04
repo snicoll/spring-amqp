@@ -18,9 +18,7 @@ package org.springframework.amqp.rabbit.annotation;
 
 import java.lang.reflect.Method;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 
-import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.rabbit.config.MethodRabbitListenerEndpoint;
 import org.springframework.amqp.rabbit.config.RabbitListenerConfigUtils;
 import org.springframework.amqp.rabbit.config.RabbitListenerContainerFactory;
@@ -220,26 +218,7 @@ public class RabbitListenerAnnotationBeanPostProcessor
 			endpoint.setId(rabbitListener.id());
 		}
 
-		String[] queues = rabbitListener.queues();
-		if (rabbitListener.queueReferences()) {
-			Assert.state(this.beanFactory != null, "BeanFactory must be set to resolve queues by bean name");
-			Queue[] queueInstances = new Queue[queues.length];
-			for (int i = 0; i < queues.length; i++) {
-				String queueRef = queues[i];
-				try {
-					queueInstances[i] = this.beanFactory.getBean(queueRef, Queue.class);
-				}
-				catch (NoSuchBeanDefinitionException ex) {
-					throw new BeanInitializationException("Could not register rabbit listener endpoint on [" +
-							method + "], no queue with id '" +
-							queueRef + "' was found in the application context", ex);
-				}
-			}
-			endpoint.setQueues(queueInstances);
-		}
-		else {
-			endpoint.setQueueNames(queues);
-		}
+		endpoint.setQueueNames(rabbitListener.queues());
 
 		endpoint.setExclusive(rabbitListener.exclusive());
 		if (rabbitListener.priority() >= 0) {

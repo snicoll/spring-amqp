@@ -94,17 +94,9 @@ public @interface RabbitListener {
 	String containerFactory() default "";
 
 	/**
-	 * The queues for this listener. If {@link #queueReferences()} is {@code false}, these are considered
-	 * queue names; otherwise, these are bean names that should be resolved as
-	 * {@link org.springframework.amqp.core.Queue Queue} instances from the context.
+	 * The queues for this listener.
 	 */
 	String[] queues();
-
-	/**
-	 * Specify if {@link #queues()} define queue names (false, default) or bean names that should
-	 * be resolved as {@link org.springframework.amqp.core.Queue Queue} instance (true).
-	 */
-	boolean queueReferences() default false;
 
 	/**
 	 * When {@code true}, a single consumer in the container will have exclusive use of the

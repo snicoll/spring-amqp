@@ -16,21 +16,13 @@
 
 package org.springframework.amqp.rabbit.annotation;
 
-import java.util.UUID;
-
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-import org.springframework.amqp.core.AnonymousQueue;
-import org.springframework.amqp.core.Binding;
-import org.springframework.amqp.core.BindingBuilder;
-import org.springframework.amqp.core.DirectExchange;
-import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
-import org.springframework.amqp.rabbit.core.RabbitAdmin;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.rabbit.test.BrokerRunning;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,19 +44,19 @@ import static org.junit.Assert.*;
 public class EnableRabbitIntegrationTests {
 
 	@Rule
-	public final BrokerRunning brokerRunning = BrokerRunning.isRunning();
+	public final BrokerRunning brokerRunning = BrokerRunning.isRunningWithEmptyQueues("test.queue");
 
 	@Autowired
 	private RabbitTemplate rabbitTemplate;
 
 	@Test
 	public void test() {
-		assertEquals("FOO", rabbitTemplate.convertSendAndReceive("foo"));
+		assertEquals("FOO", rabbitTemplate.convertSendAndReceive("test.queue", "foo"));
 	}
 
 	public static class MyService {
 
-		@RabbitListener(queues = "requestQueue", queueReferences = true)
+		@RabbitListener(queues = "test.queue")
 		public String capitalize(String foo) {
 			return foo.toUpperCase();
 		}
@@ -97,31 +89,9 @@ public class EnableRabbitIntegrationTests {
 
 		@Bean
 		public RabbitTemplate rabbitTemplate() {
-			RabbitTemplate template = new RabbitTemplate(rabbitConnectionFactory());
-			template.setExchange(ex().getName());
-			template.setRoutingKey("test");
-			return template;
+			return new RabbitTemplate(rabbitConnectionFactory());
 		}
 
-		@Bean
-		public DirectExchange ex() {
-			return new DirectExchange(UUID.randomUUID().toString(), false, true);
-		}
-
-		@Bean
-		public Binding binding() {
-			return BindingBuilder.bind(requestQueue()).to(ex()).with("test");
-		}
-
-		@Bean
-		public Queue requestQueue() {
-			return new AnonymousQueue();
-		}
-
-		@Bean
-		public RabbitAdmin admin() {
-			return new RabbitAdmin(rabbitConnectionFactory());
-		}
 	}
 
 }

@@ -62,9 +62,6 @@ public abstract class AbstractRabbitAnnotationDrivenTests {
 	public abstract void noRabbitAdminConfiguration();
 
 	@Test
-	public abstract void queueReferencesConfiguration();
-
-	@Test
 	public abstract void customConfiguration();
 
 	@Test
@@ -145,31 +142,6 @@ public abstract class AbstractRabbitAnnotationDrivenTests {
 				exclusive = true, priority = 34, responseRoutingKey = "routing-123", admin = "rabbitAdmin")
 		public void fullHandle(String msg) {
 
-		}
-	}
-
-	/**
-	 * Test for {@link QueueReferencesBean} discovery. The specified queues are actual references
-	 * and should be resolved against the application context
-	 */
-	public void testQueueReferencesConfiguration(ApplicationContext context) {
-		RabbitListenerContainerTestFactory simpleFactory =
-				context.getBean("simpleFactory", RabbitListenerContainerTestFactory.class);
-		assertEquals(1, simpleFactory.getListenerContainers().size());
-		MethodRabbitListenerEndpoint endpoint = (MethodRabbitListenerEndpoint)
-				simpleFactory.getListenerContainers().get(0).getEndpoint();
-		assertTrue("No queue names should be set", endpoint.getQueueNames().isEmpty());
-		Queue queue1 = context.getBean("queue1", Queue.class);
-		Queue queue2 = context.getBean("queue2", Queue.class);
-		assertQueues(endpoint, queue1, queue2);
-	}
-
-	@Component
-	static class QueueReferencesBean {
-
-		@RabbitListener(containerFactory = "simpleFactory", queues = {"queue1", "queue2"}, queueReferences = true)
-		public String fullHandle(String msg) {
-			return "reply";
 		}
 	}
 
