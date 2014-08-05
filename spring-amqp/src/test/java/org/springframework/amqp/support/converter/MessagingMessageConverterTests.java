@@ -16,9 +16,7 @@
 
 package org.springframework.amqp.support.converter;
 
-import java.util.Collections;
-import java.util.List;
-
+import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
@@ -41,7 +39,13 @@ public class MessagingMessageConverterTests {
 
 	private final MessagingMessageConverter converter = new MessagingMessageConverter();
 
-	private final TestAmqpHeaderMapper testAmqpHeaderMapper = new TestAmqpHeaderMapper();
+	private final SimpleAmqpHeaderMapper testAmqpHeaderMapper = new SimpleAmqpHeaderMapper();
+
+	@Before
+	public void setup() {
+		this.testAmqpHeaderMapper.setRequestHeaderNames(AmqpHeaders.REPLY_TO);
+		this.testAmqpHeaderMapper.setReplyHeaderNames(AmqpHeaders.MESSAGE_ID);
+	}
 
 	@Test
 	public void onlyHandlesMessage() {
@@ -144,22 +148,6 @@ public class MessagingMessageConverterTests {
 		MessageProperties properties = new MessageProperties();
 		properties.setContentType(MessageProperties.CONTENT_TYPE_TEXT_PLAIN);
 		return new org.springframework.amqp.core.Message(body.getBytes(), properties);
-	}
-
-	/**
-	 * A test header mapper that only maps specified fields.
-	 */
-	private static class TestAmqpHeaderMapper extends SimpleAmqpHeaderMapper {
-
-		@Override
-		protected List<String> getStandardRequestHeaderNames() {
-			return Collections.singletonList(AmqpHeaders.REPLY_TO);
-		}
-
-		@Override
-		protected List<String> getStandardReplyHeaderNames() {
-			return Collections.singletonList(AmqpHeaders.MESSAGE_ID);
-		}
 	}
 
 }

@@ -30,7 +30,6 @@ import org.springframework.amqp.rabbit.support.DefaultMessagePropertiesConverter
 import org.springframework.amqp.rabbit.support.MessagePropertiesConverter;
 import org.springframework.amqp.rabbit.support.RabbitExceptionTranslator;
 import org.springframework.amqp.support.AmqpHeaderMapper;
-import org.springframework.amqp.support.SimpleAmqpHeaderMapper;
 import org.springframework.amqp.support.converter.MessageConversionException;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.amqp.support.converter.MessagingMessageConverter;
@@ -362,14 +361,6 @@ public abstract class AbstractAdaptableMessageListener implements MessageListene
 	 * enforce backward compatibility.
 	 */
 	private class MessagingMessageConverterAdapter extends MessagingMessageConverter {
-
-		private MessagingMessageConverterAdapter() {
-			// TODO: does not map everything by default
-			SimpleAmqpHeaderMapper headerMapper = new SimpleAmqpHeaderMapper();
-			headerMapper.setRequestHeaderNames(new String[] {"*"});
-			headerMapper.setReplyHeaderNames(new String[] {"*"});
-			setHeaderMapper(headerMapper);
-		}
 
 		@Override
 		protected Object extractPayload(Message message) {
