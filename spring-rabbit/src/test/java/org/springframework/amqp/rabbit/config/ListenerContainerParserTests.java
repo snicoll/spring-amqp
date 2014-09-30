@@ -46,6 +46,7 @@ import org.springframework.context.expression.StandardBeanExpressionResolver;
 import org.springframework.context.support.ClassPathXmlApplicationContext;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.util.backoff.FixedBackOff;
 
 /**
  * @author Mark Fisher
@@ -89,7 +90,8 @@ public class ListenerContainerParserTests {
 		Object xPriority = consumerArgs.get("x-priority");
 		assertNotNull(xPriority);
 		assertEquals(10, xPriority);
-		assertEquals(Long.valueOf(5555), TestUtils.getPropertyValue(container, "recoveryInterval", Long.class));
+		FixedBackOff backOff = TestUtils.getPropertyValue(container, "backOff", FixedBackOff.class);
+		assertEquals(5555, backOff.getInterval());
 		assertFalse(TestUtils.getPropertyValue(container, "exclusive", Boolean.class));
 		assertFalse(TestUtils.getPropertyValue(container, "missingQueuesFatal", Boolean.class));
 	}

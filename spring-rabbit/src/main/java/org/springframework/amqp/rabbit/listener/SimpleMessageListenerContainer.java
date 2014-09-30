@@ -63,6 +63,9 @@ import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
+import org.springframework.util.backoff.BackOff;
+import org.springframework.util.backoff.BackOffExecution;
+import org.springframework.util.backoff.FixedBackOff;
 
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.ShutdownSignalException;
@@ -124,7 +127,7 @@ public class SimpleMessageListenerContainer extends AbstractMessageListenerConta
 
 	private volatile long shutdownTimeout = DEFAULT_SHUTDOWN_TIMEOUT;
 
-	private long recoveryInterval = DEFAULT_RECOVERY_INTERVAL;
+	private BackOff backOff = createDefaultBackOff(DEFAULT_RECOVERY_INTERVAL);
 
 	// Map entry value, when false, signals the consumer to terminate
 	private Map<BlockingQueueConsumer, Boolean> consumers;
@@ -193,12 +196,24 @@ public class SimpleMessageListenerContainer extends AbstractMessageListenerConta
 	}
 
 	/**
+	 * Specify the {@link BackOff} instance to use to compute the interval between recovery attempts. If the
+	 * {@link BackOffExecution} implementation returns {@link BackOffExecution#STOP}, this listener container will
+	 * not further attempt to recover.
+	 * <p>The {@link #setRecoveryInterval(long) recovery interval} is ignored when this property is set.
+	 */
+	public void setBackOff(BackOff backOff) {
+		this.backOff = backOff;
+	}
+
+	/**
 	 * Specify the interval between recovery attempts, in <b>milliseconds</b>. The default is 5000 ms, that is, 5
-	 * seconds.
-	 * @param recoveryInterval The recovery interval.
+	 * seconds. This is a convenience method to create a {@link FixedBackOff} with the specified interval.
+	 * <p>For more recovery options, consider specifying a {@link BackOff} instance instead.
+	 * @see #setBackOff(BackOff)
+	 * @see #handleStartupFailure(BackOffExecution, Throwable)
 	 */
 	public void setRecoveryInterval(long recoveryInterval) {
-		this.recoveryInterval = recoveryInterval;
+		this.backOff = createDefaultBackOff(recoveryInterval);
 	}
 
 	/**
@@ -955,11 +970,18 @@ public class SimpleMessageListenerContainer extends AbstractMessageListenerConta
 
 		private final CountDownLatch start;
 
+		private BackOffExecution backOffExecution;
+
 		private volatile FatalListenerStartupException startupException;
 
-		public AsyncMessageProcessingConsumer(BlockingQueueConsumer consumer) {
+		public AsyncMessageProcessingConsumer(BlockingQueueConsumer consumer, BackOffExecution backOffExecution) {
 			this.consumer = consumer;
 			this.start = new CountDownLatch(1);
+			this.backOffExecution = backOffExecution;
+		}
+
+		public AsyncMessageProcessingConsumer(BlockingQueueConsumer consumer) {
+			this(consumer, backOff.start());
 		}
 
 		/**
@@ -998,7 +1020,7 @@ public class SimpleMessageListenerContainer extends AbstractMessageListenerConta
 					}
 					else {
 						this.start.countDown();
-						handleStartupFailure(e);
+						handleStartupFailure(backOffExecution, e);
 						throw e;
 					}
 				}
@@ -1007,7 +1029,7 @@ public class SimpleMessageListenerContainer extends AbstractMessageListenerConta
 				}
 				catch (Throwable t) {
 					this.start.countDown();
-					handleStartupFailure(t);
+					handleStartupFailure(backOffExecution, t);
 					throw t;
 				}
 
@@ -1081,6 +1103,10 @@ public class SimpleMessageListenerContainer extends AbstractMessageListenerConta
 			catch (FatalListenerExecutionException ex) {
 				logger.error("Consumer received fatal exception during processing", ex);
 				// Fatal, but no point re-throwing, so just abort.
+				aborted = true;
+			}
+			catch (MaxRecoveryAttemptsReachedException ex) {
+				logger.error("Back off policy does not allow for further attempts", ex);
 				aborted = true;
 			}
 			catch (ShutdownSignalException e) {
@@ -1165,17 +1191,23 @@ public class SimpleMessageListenerContainer extends AbstractMessageListenerConta
 	}
 
 	/**
-	 * Wait for a period determined by the {@link #setRecoveryInterval(long) recoveryInterval} to give the container a
-	 * chance to recover from consumer startup failure, e.g. if the broker is down.
+	 * Wait for a period determined by the next back off time using the specified {@link BackOffExecution} in order
+	 * to give the container a chance to recover from consumer startup failure, e.g. if the broker is down. Throw
+	 * {@link MaxRecoveryAttemptsReachedException} if the container should stop trying to recover.
+	 * @param execution the {@link BackOffExecution} to use
 	 * @param t the exception that stopped the startup
 	 * @throws Exception if the shared connection still can't be established
 	 */
-	protected void handleStartupFailure(Throwable t) throws Exception {
+	protected void handleStartupFailure(BackOffExecution execution, Throwable t) throws Exception {
+		long interval = execution.nextBackOff();
+		if (interval == BackOffExecution.STOP) {
+			throw new MaxRecoveryAttemptsReachedException();
+		}
 		try {
 			if (logger.isDebugEnabled()) {
-				logger.debug("Recovering consumer in " + this.recoveryInterval + " ms.");
+				logger.debug("Recovering consumer in " + interval + " ms.");
 			}
-			long timeout = System.currentTimeMillis() + recoveryInterval;
+			long timeout = System.currentTimeMillis() + interval;
 			while (isActive() && System.currentTimeMillis() < timeout) {
 				Thread.sleep(200);
 			}
@@ -1186,11 +1218,18 @@ public class SimpleMessageListenerContainer extends AbstractMessageListenerConta
 		}
 	}
 
+	private FixedBackOff createDefaultBackOff(long interval) {
+		return new FixedBackOff(interval, Long.MAX_VALUE);
+	}
+
 	@SuppressWarnings("serial")
 	private static class WrappedTransactionException extends RuntimeException {
 		public WrappedTransactionException(Throwable cause) {
 			super(cause);
 		}
 	}
+
+	@SuppressWarnings("serial")
+	protected static class MaxRecoveryAttemptsReachedException extends RuntimeException { }
 
 }

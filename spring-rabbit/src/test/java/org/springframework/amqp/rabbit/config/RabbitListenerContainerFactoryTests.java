@@ -32,9 +32,11 @@ import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
 import org.springframework.amqp.rabbit.listener.adapter.MessageListenerAdapter;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.amqp.support.converter.SimpleMessageConverter;
+import org.springframework.amqp.utils.test.TestUtils;
 import org.springframework.beans.DirectFieldAccessor;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.util.ErrorHandler;
+import org.springframework.util.backoff.FixedBackOff;
 
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
@@ -117,7 +119,8 @@ public class RabbitListenerContainerFactoryTests {
 		Advice[] actualAdviceChain = (Advice[]) fieldAccessor.getPropertyValue("adviceChain");
 		assertEquals("Wrong number of advice", 1, actualAdviceChain.length);
 		assertSame("Wrong advice", advice, actualAdviceChain[0]);
-		assertEquals(3000L, fieldAccessor.getPropertyValue("recoveryInterval"));
+		FixedBackOff backOff = TestUtils.getPropertyValue(container, "backOff", FixedBackOff.class);
+		assertEquals(3000, backOff.getInterval());
 		assertEquals(true, fieldAccessor.getPropertyValue("missingQueuesFatal"));
 		assertEquals(messageListener, container.getMessageListener());
 		assertEquals("myQueue", container.getQueueNames()[0]);
