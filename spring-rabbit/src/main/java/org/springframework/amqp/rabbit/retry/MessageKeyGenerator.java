@@ -16,6 +16,8 @@
 
 package org.springframework.amqp.rabbit.retry;
 
+import org.jspecify.annotations.Nullable;
+
 import org.springframework.amqp.core.Message;
 
 /**
@@ -31,10 +33,12 @@ public interface MessageKeyGenerator {
 	 * about assuming uniqueness of any element of the message, especially considering the requirement that it be
 	 * repeatable. A message id is ideal, but may not be present (AMQP does not mandate it), and the message body is a
 	 * byte array whose contents might be repeatable, but its object value is not.
+	 * <p>While returning {@code null} is allowed, this represents a faulty scenario that
+	 * will prevent retry operations to work correctly.
 	 *
 	 * @param message the message to generate a key for
 	 * @return a unique key for this message
 	 */
-	Object getKey(Message message);
+	@Nullable Object getKey(Message message);
 
 }

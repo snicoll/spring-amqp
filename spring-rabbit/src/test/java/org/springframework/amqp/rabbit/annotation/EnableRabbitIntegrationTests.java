@@ -45,6 +45,7 @@ import jakarta.validation.Valid;
 import org.aopalliance.aop.Advice;
 import org.aopalliance.intercept.MethodInterceptor;
 import org.aopalliance.intercept.MethodInvocation;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -52,6 +53,7 @@ import org.mockito.Mockito;
 
 import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.amqp.core.AcknowledgeMode;
+import org.springframework.amqp.core.Address;
 import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.ExchangeTypes;
 import org.springframework.amqp.core.Message;
@@ -84,6 +86,7 @@ import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
 import org.springframework.amqp.rabbit.listener.adapter.ReplyPostProcessor;
 import org.springframework.amqp.rabbit.listener.api.ChannelAwareMessageListener;
 import org.springframework.amqp.rabbit.listener.api.RabbitListenerErrorHandler;
+import org.springframework.amqp.rabbit.retry.MessageRecoveryCallback;
 import org.springframework.amqp.rabbit.support.ListenerExecutionFailedException;
 import org.springframework.amqp.rabbit.test.MessageTestUtils;
 import org.springframework.amqp.support.AmqpHeaders;
@@ -117,6 +120,7 @@ import org.springframework.core.PriorityOrdered;
 import org.springframework.core.convert.ConversionService;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.core.convert.support.DefaultConversionService;
+import org.springframework.core.retry.RetryTemplate;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.data.web.JsonPath;
 import org.springframework.messaging.MessageHeaders;
@@ -129,7 +133,6 @@ import org.springframework.messaging.handler.annotation.support.MethodArgumentNo
 import org.springframework.messaging.handler.invocation.HandlerMethodArgumentResolver;
 import org.springframework.messaging.support.GenericMessage;
 import org.springframework.messaging.support.MessageBuilder;
-import org.springframework.retry.support.RetryTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.TestPropertySource;
@@ -940,7 +943,7 @@ public class EnableRabbitIntegrationTests extends NeedsManagementTests {
 	@Test
 	public void messagingMessageReturned() throws InterruptedException {
 		Message message = org.springframework.amqp.core.MessageBuilder.withBody("\"messaging\"".getBytes())
-			.andProperties(MessagePropertiesBuilder.newInstance().setContentType("application/json").build()).build();
+				.andProperties(MessagePropertiesBuilder.newInstance().setContentType("application/json").build()).build();
 		message = this.rabbitTemplate.sendAndReceive("test.messaging.message", message);
 		assertThat(message).isNotNull();
 		assertThat(new String(message.getBody())).isEqualTo("{\"field\":\"MESSAGING\"}");
@@ -983,9 +986,9 @@ public class EnableRabbitIntegrationTests extends NeedsManagementTests {
 	@Test
 	public void testManualOverride() {
 		assertThat(TestUtils.getPropertyValue(this.registry.getListenerContainer("manual.acks.1"), "acknowledgeMode"))
-			.isEqualTo(AcknowledgeMode.MANUAL);
+				.isEqualTo(AcknowledgeMode.MANUAL);
 		assertThat(TestUtils.getPropertyValue(this.registry.getListenerContainer("manual.acks.2"), "acknowledgeMode"))
-			.isEqualTo(AcknowledgeMode.MANUAL);
+				.isEqualTo(AcknowledgeMode.MANUAL);
 	}
 
 	@Test
@@ -1504,7 +1507,6 @@ public class EnableRabbitIntegrationTests extends NeedsManagementTests {
 			return "bar=" + this.bar;
 		}
 
-
 	}
 
 	public static class CustomMethodArgument {
@@ -1656,7 +1658,7 @@ public class EnableRabbitIntegrationTests extends NeedsManagementTests {
 				return m;
 			});
 			factory.setRetryTemplate(new RetryTemplate());
-			factory.setReplyRecoveryCallback(c -> null);
+			factory.setReplyRecoveryCallback(new NullMessageRecoveryCallback());
 			return factory;
 		}
 
@@ -1668,7 +1670,7 @@ public class EnableRabbitIntegrationTests extends NeedsManagementTests {
 			factory.setConsumerTagStrategy(consumerTagStrategy());
 			factory.setReceiveTimeout(10L);
 			factory.setRetryTemplate(new RetryTemplate());
-			factory.setReplyRecoveryCallback(c -> null);
+			factory.setReplyRecoveryCallback(new NullMessageRecoveryCallback());
 			factory.setChannelTransacted(true);
 			return factory;
 		}
@@ -1812,22 +1814,22 @@ public class EnableRabbitIntegrationTests extends NeedsManagementTests {
 				}
 			});
 			registrar.setCustomMethodArgumentResolvers(
-				new HandlerMethodArgumentResolver() {
+					new HandlerMethodArgumentResolver() {
 
-					@Override
-					public boolean supportsParameter(MethodParameter parameter) {
-						return CustomMethodArgument.class.isAssignableFrom(parameter.getParameterType());
+						@Override
+						public boolean supportsParameter(MethodParameter parameter) {
+							return CustomMethodArgument.class.isAssignableFrom(parameter.getParameterType());
+						}
+
+						@Override
+						public Object resolveArgument(MethodParameter parameter, org.springframework.messaging.Message<?> message) {
+							return new CustomMethodArgument(
+									(String) message.getPayload(),
+									message.getHeaders().get("customHeader", String.class)
+							);
+						}
+
 					}
-
-					@Override
-					public Object resolveArgument(MethodParameter parameter, org.springframework.messaging.Message<?> message) {
-						return new CustomMethodArgument(
-								(String) message.getPayload(),
-								message.getHeaders().get("customHeader", String.class)
-						);
-					}
-
-				}
 			);
 		}
 
@@ -1910,7 +1912,7 @@ public class EnableRabbitIntegrationTests extends NeedsManagementTests {
 			return (msg, channel, springMsg, ex) -> {
 				String payload = ((Bar) springMsg.getPayload()).field.toUpperCase();
 				return payload + payload + " " + ex.getCause().getMessage();
- 			};
+			};
 		}
 
 		@Bean
@@ -2125,12 +2127,13 @@ public class EnableRabbitIntegrationTests extends NeedsManagementTests {
 
 	@RabbitListener(bindings = @QueueBinding
 			(value = @Queue,
-			 exchange = @Exchange(value = "multi.json.exch", autoDelete = "true"),
-			 key = "multi.json.valid.rk"), containerFactory = "simpleJsonListenerContainerFactory",
-			 returnExceptions = "true")
+					exchange = @Exchange(value = "multi.json.exch", autoDelete = "true"),
+					key = "multi.json.valid.rk"), containerFactory = "simpleJsonListenerContainerFactory",
+			returnExceptions = "true")
 	static class MultiListenerValidatedJsonBean {
 
 		final CountDownLatch latch = new CountDownLatch(1);
+
 		volatile ValidatedClass validatedObject;
 
 		@RabbitHandler
@@ -2533,5 +2536,12 @@ public class EnableRabbitIntegrationTests extends NeedsManagementTests {
 
 	}
 
+	private static final class NullMessageRecoveryCallback implements MessageRecoveryCallback {
+
+		@Override
+		public @Nullable Object recover(Message message, Address replyTo, @Nullable Throwable cause) {
+			return null;
+		}
+	}
 
 }

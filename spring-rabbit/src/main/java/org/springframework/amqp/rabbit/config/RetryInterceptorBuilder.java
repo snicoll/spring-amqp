@@ -16,7 +16,8 @@
 
 package org.springframework.amqp.rabbit.config;
 
-import java.util.Objects;
+import java.time.Duration;
+import java.util.function.Consumer;
 
 import org.aopalliance.intercept.MethodInterceptor;
 import org.jspecify.annotations.Nullable;
@@ -24,21 +25,15 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.amqp.rabbit.retry.MessageKeyGenerator;
 import org.springframework.amqp.rabbit.retry.MessageRecoverer;
 import org.springframework.amqp.rabbit.retry.NewMessageIdentifier;
-import org.springframework.retry.RetryOperations;
-import org.springframework.retry.RetryPolicy;
-import org.springframework.retry.backoff.BackOffPolicy;
-import org.springframework.retry.backoff.ExponentialBackOffPolicy;
-import org.springframework.retry.interceptor.RetryOperationsInterceptor;
-import org.springframework.retry.interceptor.StatefulRetryOperationsInterceptor;
-import org.springframework.retry.policy.SimpleRetryPolicy;
-import org.springframework.retry.support.RetryTemplate;
+import org.springframework.core.retry.RetryOperations;
+import org.springframework.core.retry.RetryPolicy;
 import org.springframework.util.Assert;
 
 /**
  * <p>Simplified facade to make it easier and simpler to build a
  * {@link StatefulRetryOperationsInterceptor} or
- * (stateless) {@link RetryOperationsInterceptor}
- * by providing a fluent interface to defining the behavior on error.
+ * {@link StatelessRetryOperationsInterceptor} by providing a fluent interface to
+ * defining the behavior on error.
  * <p>
  * Typical example:
  * </p>
@@ -76,19 +71,15 @@ public abstract class RetryInterceptorBuilder<B extends RetryInterceptorBuilder<
 
 	private @Nullable RetryOperations retryOperations;
 
-	private final RetryTemplate retryTemplate = new RetryTemplate();
+	private @Nullable RetryPolicy retryPolicy;
 
-	private final SimpleRetryPolicy simpleRetryPolicy = new SimpleRetryPolicy();
+	private final RetryPolicy.Builder retryPolicyBuilder = RetryPolicy.builder();
 
 	private @Nullable MessageRecoverer messageRecoverer;
 
 	private boolean templateAltered;
 
-	private boolean backOffPolicySet;
-
 	private boolean retryPolicySet;
-
-	private boolean backOffOptionsSet;
 
 	/**
 	 * Create a builder for a stateful retry interceptor.
@@ -124,18 +115,40 @@ public abstract class RetryInterceptorBuilder<B extends RetryInterceptorBuilder<
 	}
 
 	/**
+	 * Apply the retry policy - cannot be used if a custom retry template has been provided, or if retry
+	 * policy has been customized already.
+	 * @param policy The policy.
+	 * @return this.
+	 */
+	public B retryPolicy(RetryPolicy policy) {
+		Assert.isNull(this.retryOperations, "cannot set the retry policy when a custom retryOperations has been set");
+		Assert.isTrue(!this.templateAltered, "cannot set the retry policy if max attempts or back off policy or options changed");
+		this.retryPolicy = policy;
+		this.retryPolicySet = true;
+		this.templateAltered = true;
+		return _this();
+	}
+
+	/**
+	 * Configure the {@link RetryPolicy}. Cannot be used if a custom retry operations or retry policy has been set.
+	 * @param retryPolicy a consumer to customize the builder
+	 * @return this.
+	 */
+	public B configureRetryPolicy(Consumer<RetryPolicy.Builder> retryPolicy) {
+		Assert.isNull(this.retryOperations, "cannot alter the retry policy when a custom retryOperations has been set");
+		Assert.isTrue(!this.retryPolicySet, "cannot alter the retry policy when a custom retryPolicy has been set");
+		retryPolicy.accept(this.retryPolicyBuilder);
+		return _this();
+	}
+
+	/**
 	 * Apply the max attempts - a SimpleRetryPolicy will be used. Cannot be used if a custom retry operations
 	 * or retry policy has been set.
 	 * @param maxAttempts the max attempts.
 	 * @return this.
 	 */
 	public B maxAttempts(int maxAttempts) {
-		Assert.isNull(this.retryOperations, "cannot alter the retry policy when a custom retryOperations has been set");
-		Assert.isTrue(!this.retryPolicySet, "cannot alter the retry policy when a custom retryPolicy has been set");
-		this.simpleRetryPolicy.setMaxAttempts(maxAttempts);
-		this.retryTemplate.setRetryPolicy(this.simpleRetryPolicy);
-		this.templateAltered = true;
-		return _this();
+		return configureRetryPolicy((retryPolicy) -> retryPolicy.maxAttempts(maxAttempts));
 	}
 
 	/**
@@ -146,45 +159,10 @@ public abstract class RetryInterceptorBuilder<B extends RetryInterceptorBuilder<
 	 * @return this.
 	 */
 	public B backOffOptions(long initialInterval, double multiplier, long maxInterval) {
-		Assert.isNull(this.retryOperations, "cannot set the back off policy when a custom retryOperations has been set");
-		Assert.isTrue(!this.backOffPolicySet, "cannot set the back off options when a back off policy has been set");
-		ExponentialBackOffPolicy policy = new ExponentialBackOffPolicy();
-		policy.setInitialInterval(initialInterval);
-		policy.setMultiplier(multiplier);
-		policy.setMaxInterval(maxInterval);
-		this.retryTemplate.setBackOffPolicy(policy);
-		this.backOffOptionsSet = true;
-		this.templateAltered = true;
-		return _this();
-	}
-
-	/**
-	 * Apply the retry policy - cannot be used if a custom retry template has been provided, or the max attempts or
-	 * back off options or policy have been applied.
-	 * @param policy The policy.
-	 * @return this.
-	 */
-	public B retryPolicy(RetryPolicy policy) {
-		Assert.isNull(this.retryOperations, "cannot set the retry policy when a custom retryOperations has been set");
-		Assert.isTrue(!this.templateAltered, "cannot set the retry policy if max attempts or back off policy or options changed");
-		this.retryTemplate.setRetryPolicy(policy);
-		this.retryPolicySet = true;
-		this.templateAltered = true;
-		return _this();
-	}
-
-	/**
-	 * Apply the back off policy. Cannot be used if a custom retry operations, or back off policy has been applied.
-	 * @param policy The policy.
-	 * @return this.
-	 */
-	public B backOffPolicy(BackOffPolicy policy) {
-		Assert.isNull(this.retryOperations, "cannot set the back off policy when a custom retryOperations has been set");
-		Assert.isTrue(!this.backOffOptionsSet, "cannot set the back off policy when the back off policy options have been set");
-		this.retryTemplate.setBackOffPolicy(policy);
-		this.templateAltered = true;
-		this.backOffPolicySet = true;
-		return _this();
+		return configureRetryPolicy((retryPolicy) -> retryPolicy
+				.delay(Duration.ofMillis(initialInterval))
+				.multiplier(multiplier)
+				.maxDelay(Duration.ofMillis(maxInterval)));
 	}
 
 	/**
@@ -201,7 +179,8 @@ public abstract class RetryInterceptorBuilder<B extends RetryInterceptorBuilder<
 		if (this.messageRecoverer != null) {
 			factoryBean.setMessageRecoverer(this.messageRecoverer);
 		}
-		factoryBean.setRetryOperations(Objects.requireNonNullElse(this.retryOperations, this.retryTemplate));
+		RetryPolicy retryPolicyToUse = (this.retryPolicy != null) ? this.retryPolicy : this.retryPolicyBuilder.build();
+		factoryBean.setRetryPolicy(retryPolicyToUse);
 	}
 
 	public abstract T build();
@@ -261,7 +240,7 @@ public abstract class RetryInterceptorBuilder<B extends RetryInterceptorBuilder<
 	 * Builder for a stateless interceptor.
 	 */
 	public static final class StatelessRetryInterceptorBuilder
-			extends RetryInterceptorBuilder<StatelessRetryInterceptorBuilder, RetryOperationsInterceptor> {
+			extends RetryInterceptorBuilder<StatelessRetryInterceptorBuilder, StatelessRetryOperationsInterceptor> {
 
 		private final StatelessRetryOperationsInterceptorFactoryBean factoryBean =
 				new StatelessRetryOperationsInterceptorFactoryBean();
@@ -270,7 +249,7 @@ public abstract class RetryInterceptorBuilder<B extends RetryInterceptorBuilder<
 		}
 
 		@Override
-		public RetryOperationsInterceptor build() {
+		public StatelessRetryOperationsInterceptor build() {
 			this.applyCommonSettings(this.factoryBean);
 			return this.factoryBean.getObject();
 		}
